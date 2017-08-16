@@ -4,8 +4,8 @@ from datetime import datetime,timedelta,date
 import plotly.plotly as py
 import plotly.graph_objs as go
 
-def generatepivot(df,reason,org):
-
+def dd_generatepivot(df,reason,org):
+    df = df[df['Reason']==reason]
     if org ==['All']:
         orglist = list(df['Org'].unique())
     else:
@@ -16,8 +16,8 @@ def generatepivot(df,reason,org):
     pivot = pivot.sort_values(['Failed', 'Total'], ascending=[False, False])
     return pivot
 
-def printfigs(df,reason,org,threshold,virtuallocs):
-    pivot = generatepivot(df,reason,org)
+def dd_printfigs(df,reason,org,threshold,virtuallocs):
+    pivot = dd_generatepivot(df,reason,org)
     finalperc = np.round(pivot['Failed'].sum()*100.0/pivot['Total'].sum(),2)
     total = pivot['Total'].sum()
     pivot = pivot[pivot['Total']>=threshold]

@@ -1,8 +1,19 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
+import plotly.figure_factory as ff
+from dash.dependencies import Input, Output
 
-print(dcc.__version__) # 0.6.0 or above is required
+from duediagpage import makepage_dd
+from spotonDD import duedatediag
+from spotonddplot import dd_generatepivot
+from spotonddplot import dd_printfigs
+
+from lhplanningpage import makepage_lhplanning
+from spotonLH import lhdata
+
+
+
 
 app = dash.Dash()
 
@@ -12,6 +23,11 @@ app = dash.Dash()
 # In this case, we're adding the elements through a callback, so we can ignore
 # the exception.
 app.config.supress_callback_exceptions = True
+my_css_url = "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
+app.css.append_css({
+    "external_url": my_css_url
+})
+
 
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
@@ -20,67 +36,85 @@ app.layout = html.Div([
 
 
 index_page = html.Div([
-    dcc.Link('Go to Page 1', href='/page-1'),
+    dcc.Link('Go to Due Date Diagnostic', href='/page_dddiag'),
     html.Br(),
-    dcc.Link('Go to Page 2', href='/page-2'),
+    dcc.Link('Go to LH Planning', href='/page_lhplanning'),
 ])
 
-page_1_layout = html.Div([
-    html.H1('Page 1'),
-    dcc.Dropdown(
-        id='page-1-dropdown',
-        options=[{'label': i, 'value': i} for i in ['LA', 'NYC', 'MTL']],
-        value='LA'
-    ),
-    html.Div(id='page-1-content'),
-    html.Br(),
-    dcc.Link('Go to Page 2', href='/page-2'),
-    html.Br(),
-    dcc.Link('Go back to home', href='/'),
+page_dddiag_layout = makepage_dd()
+ddobj =duedatediag()
+dd = ddobj.dd
+startdate = ddobj.startdate
+enddate = ddobj.enddate
+dd = dd[(dd['Date']>=startdate)&(dd['Date']<=enddate)]
+threshold = ddobj.threshold
+virtuallocs = ddobj.virtuallocs
+fig = dd_printfigs(dd,'Virtual',['All'],threshold,virtuallocs)
+table = ff.create_table(dd_generatepivot(dd.head(10),'Virtual',['All']))
+@app.callback(
+    Output(component_id='graph',component_property = 'figure'),
+    [Input(component_id='reason_selection', component_property='value'),
+    Input(component_id='org_selector', component_property='value')]
+)
+def updatechart(reason,org):
+    fig = dd_printfigs(dd,reason,org,threshold,virtuallocs)
+    return fig
 
-])
+@app.callback(
+    Output(component_id='table',component_property = 'figure'),
+    [Input(component_id='reason_selection', component_property='value'),
+    Input(component_id='table_filter', component_property='value'),
+    Input(component_id='org_selector', component_property='value')]
+)
+def updatechart2(reason,table_filter,org):
+    pivot = dd_generatepivot(dd,reason,org)
+    pivot = pivot.rename(columns = {'specific_pt': 'Lane'})
+    if table_filter=='All':
+        pass
+    elif table_filter=='Top10':
+        pivot = pivot.head(10)
+    else:
+        pivot = pivot.head(25)
 
-@app.callback(dash.dependencies.Output('page-1-content', 'children'),
-              [dash.dependencies.Input('page-1-dropdown', 'value')])
-def page_1_dropdown(value):
-    return 'You have selected "{}"'.format(value)
+    table = ff.create_table(pivot)
+    return table
 
 
-page_2_layout = html.Div([
-    html.H1('Page 2'),
-    dcc.RadioItems(
-        id='page-2-radios',
-        options=[{'label': i, 'value': i} for i in ['Orange', 'Blue', 'Red']],
-        value='Orange'
-    ),
-    html.Div(id='page-2-content'),
-    html.Br(),
-    dcc.Link('Go to Page 1', href='/page-1'),
-    html.Br(),
-    dcc.Link('Go back to home', href='/')
-])
+lh = lhdata()
+lhgraph,lhheatmap = lh.returngraphs(['BLRH'],['DELH'])
+page_lhplanning_layout = makepage_lhplanning(lh.orgoptions,lh.destoptions,lh.startdate,lh.enddate,lhgraph,lhheatmap)
 
-@app.callback(dash.dependencies.Output('page-2-content', 'children'),
-              [dash.dependencies.Input('page-2-radios', 'value')])
-def page_2_radios(value):
-    return 'You have selected "{}"'.format(value)
+@app.callback(
+    Output(component_id='lhgraph',component_property = 'figure'),
+    [Input(component_id='org_selection', component_property='value'),
+    Input(component_id='dest_selection', component_property='value')]
+)
+def updatelhchart(orglist,destlist):
+    lhgraph,lhheatmap = lh.returngraphs(orglist,destlist)
+    return lhgraph
+
+@app.callback(
+    Output(component_id='lhheatmap',component_property = 'figure'),
+    [Input(component_id='org_selection', component_property='value'),
+    Input(component_id='dest_selection', component_property='value')]
+)
+def updatelhchart2(orglist,destlist):
+    lhgraph,lhheatmap = lh.returngraphs(orglist,destlist)
+    return lhheatmap
 
 
 # Update the index
 @app.callback(dash.dependencies.Output('page-content', 'children'),
               [dash.dependencies.Input('url', 'pathname')])
 def display_page(pathname):
-    if pathname == '/page-1':
-        return page_1_layout
-    elif pathname == '/page-2':
-        return page_2_layout
+    if pathname == '/page_dddiag':
+        return page_dddiag_layout
+    elif pathname == '/page_lhplanning':
+        return page_lhplanning_layout
     else:
         return index_page
     # You could also return a 404 "URL not found" page here
 
-app.css.append_css({
-    'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'
-})
 
 
 if __name__ == '__main__':
